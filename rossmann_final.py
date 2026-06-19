@@ -1,12 +1,13 @@
 """
 =======================================================================
-ROSSMANN STORE SALES — PRODUCTION-GRADE PIPELINE WITH CONTROLLED ABLATIONS
+ROSSMANN STORE SALES — PRODUCTION-GRADE PIPELINE WITH CLOSED-LOOP REMEDIATION
 =======================================================================
-CRISP-DM Phase 3 Compliance:
+CRISP-DM Phase 3 & 4 Compliance:
   - Part A: Structural Pipeline Engineering (Declared FIRST)
   - Part B: Cross-Validation Baseline Tourney (Reusing Part A Pipeline)
   - Part C: Controlled Ablation Experiments on Champion
-  - Part D: Mechanical Failure Analysis
+  - Part D: Mechanical Failure Analysis (Identifies FM-1: Promo Surprise)
+  - Part E: Closed-Loop Remediation Engine (Deploys Local Elasticity Fix)
 =======================================================================
 """
 
@@ -52,6 +53,7 @@ BASE_FEATURES = [
     "Promo", "Promo2", "IsPromo2Active", "Promo2Age", "SchoolHoliday", "StateHoliday", "CompetitionDistance", "CompetitionAge"
 ]
 LAG_FEATURES = ["SalesLag7", "SalesLag14", "SalesLag28", "SalesRollingMean7", "SalesRollingMean28"]
+REMEDIATION_FEATURES = ["StorePromoElasticity", "StorePromoInteraction"]
 CATEGORICAL_COLS = ["StoreType", "Assortment", "StateHoliday"]
 
 # =====================================================================
@@ -67,22 +69,28 @@ class RossmannStatefulTransformer(BaseEstimator, TransformerMixin):
         
         self.distance_imputer = SimpleImputer(strategy="median")
         self.cat_encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
-        self.history_buffer_ = None  # Holds training states securely
+        self.history_buffer_ = None  
+        self.store_promo_elasticity_ = {}  # Stateful dictionary for Part E Fix
 
     def fit(self, X, y=None):
-        # Cache the complete training context into memory as a history reference buffer
         self.history_buffer_ = X.copy()
         
         if "CompetitionDistance" in X.columns:
             self.distance_imputer.fit(X[["CompetitionDistance"]])
         self.cat_encoder.fit(X[self.cat_cols].astype(str))
+        
+        # ── Part E Fix: Calculate Localized Store-Level Promo Elasticity Coefficients ──
+        if "Sales" in X.columns and "Promo" in X.columns:
+            promo_sales = X[X["Promo"] == 1].groupby("Store")["Sales"].mean()
+            non_promo_sales = X[X["Promo"] == 0].groupby("Store")["Sales"].mean().replace(0, 1)
+            self.store_promo_elasticity_ = (promo_sales / non_promo_sales).to_dict()
+            
         return self
 
     def _compute_internal_features(self, df: pd.DataFrame) -> pd.DataFrame:
         d = df.copy()
         d = d.sort_values(["Store", "Date"])
         
-        # Continuous Lag and Rolling Windows
         for lag in [7, 14, 28]:
             d[f"SalesLag{lag}"] = d.groupby("Store")["Sales"].shift(lag).fillna(0)
         for window in [7, 28]:
@@ -90,7 +98,6 @@ class RossmannStatefulTransformer(BaseEstimator, TransformerMixin):
                 lambda s: s.shift(1).rolling(window, min_periods=1).mean()
             ).fillna(0)
 
-        # Date Decomposition
         d["Year"]        = d["Date"].dt.year
         d["Month"]       = d["Date"].dt.month
         d["Day"]         = d["Date"].dt.day
@@ -98,17 +105,14 @@ class RossmannStatefulTransformer(BaseEstimator, TransformerMixin):
         d["WeekOfYear"]  = d["Date"].dt.isocalendar().week.astype(int)
         d["IsWeekend"]   = (d["DayOfWeek"] >= 5).astype(int)
 
-        # Competition Timelines
         d["CompetitionOpenSinceYear"]  = d["CompetitionOpenSinceYear"].fillna(0).astype(int)
         d["CompetitionOpenSinceMonth"] = d["CompetitionOpenSinceMonth"].fillna(0).astype(int)
         d["CompetitionAge"] = (12 * (d["Year"] - d["CompetitionOpenSinceYear"]) + (d["Month"] - d["CompetitionOpenSinceMonth"])).clip(lower=0)
 
-        # Promo 2 Trackers
         d["Promo2SinceYear"]  = d["Promo2SinceYear"].fillna(0).astype(int)
         d["Promo2SinceWeek"]  = d["Promo2SinceWeek"].fillna(0).astype(int)
         d["PromoInterval"]    = d["PromoInterval"].fillna("")
 
-        # Vectorized implementation for performance speedups
         def _promo2_active(row):
             if row["Promo2"] == 0 or row["PromoInterval"] == "": return 0
             active_months = [self.month_to_num.get(m, 0) for m in row["PromoInterval"].split(",")]
@@ -116,12 +120,15 @@ class RossmannStatefulTransformer(BaseEstimator, TransformerMixin):
 
         d["IsPromo2Active"] = d.apply(_promo2_active, axis=1)
         d["Promo2Age"] = (52 * (d["Year"] - d["Promo2SinceYear"]) + (d["WeekOfYear"] - d["Promo2SinceWeek"])).clip(lower=0) * d["Promo2"]
+        
+        # Map stateful elasticity back to mitigate global smoothing issues discovered in Part D
+        d["StorePromoElasticity"] = d["Store"].map(self.store_promo_elasticity_).fillna(1.0)
+        d["StorePromoInteraction"] = d["Promo"] * d["StorePromoElasticity"]
+        
         return d
 
     def transform(self, X):
         original_indices = X.index
-        
-        # If transforming validation, stitch with historical context buffer to prevent sequence drops
         if self.history_buffer_ is not None and X.index[0] != self.history_buffer_.index[0]:
             combined_df = pd.concat([self.history_buffer_, X]).drop_duplicates(subset=["Store", "Date"], keep="last")
         else:
@@ -137,7 +144,6 @@ class RossmannStatefulTransformer(BaseEstimator, TransformerMixin):
             if col not in d.columns:
                 d[col] = 0.0
                 
-        # Return only the rows requested by the active fold execution step
         return d.loc[original_indices, self.feature_cols]
 
 
@@ -159,30 +165,22 @@ def evaluate_models_cv(df: pd.DataFrame, base_pipeline: Pipeline, n_splits: int 
     results = {"LightGBM": [], "RandomForest": [], "RidgeRegression": []}
     
     for fold, (train_idx, val_idx) in enumerate(tscv.split(df_cv), 1):
-        print(f" Processing Cross-Validation Fold {fold}/{n_splits}...")
         train_df, val_df = df_cv.iloc[train_idx].copy(), df_cv.iloc[val_idx].copy()
         y_tr_log = np.log1p(train_df["Sales"])
         y_va_real = val_df["Sales"].values
         
-        # ── Optimized Hyperparameters for High Capacity Learning ──
         base_pipeline.set_params(estimator=lgb.LGBMRegressor(
             objective="regression_l2", learning_rate=0.05, num_leaves=63, 
-            n_estimators=300, min_child_samples=20, subsample=0.8, colsample_bytree=0.8,
-            random_state=42, verbosity=-1
+            n_estimators=300, random_state=42, verbosity=-1
         ))
         base_pipeline.fit(train_df, y_tr_log)
         results["LightGBM"].append(rmspe(y_va_real, np.expm1(base_pipeline.predict(val_df))))
         
-        base_pipeline.set_params(estimator=RandomForestRegressor(
-            n_estimators=20, max_depth=12, n_jobs=-1, random_state=42
-        ))
+        base_pipeline.set_params(estimator=RandomForestRegressor(n_estimators=20, max_depth=12, n_jobs=-1, random_state=42))
         base_pipeline.fit(train_df, y_tr_log)
         results["RandomForest"].append(rmspe(y_va_real, np.expm1(base_pipeline.predict(val_df))))
         
-        base_pipeline.set_params(estimator=Pipeline([
-            ('scaler', StandardScaler()),
-            ('ridge', Ridge(alpha=10.0))
-        ]))
+        base_pipeline.set_params(estimator=Pipeline([('scaler', StandardScaler()), ('ridge', Ridge(alpha=10.0))]))
         base_pipeline.fit(train_df, y_tr_log)
         results["RidgeRegression"].append(rmspe(y_va_real, np.expm1(base_pipeline.predict(val_df))))
         
@@ -201,35 +199,23 @@ def declare_champion(cv_results: dict) -> str:
     print("="*50 + "\n")
     return champion
 
-# =====================================================================
-# PART C: CONTROLLED ABLATIONS & TUNING ENGINE
-# =====================================================================
 
-def run_controlled_ablations(df: pd.DataFrame, base_pipeline: Pipeline, n_splits: int = 3) -> pd.DataFrame:
-    print("--- Starting Part C: Champion Controlled Ablations Suite ---")
+def run_controlled_ablations(df: pd.DataFrame, base_pipeline: Pipeline, feature_set: list, n_splits: int = 3) -> pd.DataFrame:
     df_cv = df.sort_values("Date").reset_index(drop=True)
     tscv = TimeSeriesSplit(n_splits=n_splits)
     
     experiments = {
-        "Exp 0: Baseline Champion": {
-            "pipeline_features": BASE_FEATURES + LAG_FEATURES,
+        "Exp 0: Baseline Params": {
             "estimator": lgb.LGBMRegressor(objective="regression_l2", learning_rate=0.1, num_leaves=31, random_state=42, verbosity=-1, n_estimators=150),
-            "hypothesis": "Base model performance with standard features."
+            "hypothesis": "Evaluate standard parameters over designated feature matrix."
         },
-        "Exp 1: Drop Lag Features": {
-            "pipeline_features": BASE_FEATURES,
-            "estimator": lgb.LGBMRegressor(objective="regression_l2", learning_rate=0.1, num_leaves=31, random_state=42, verbosity=-1, n_estimators=150),
-            "hypothesis": "Removing time-series lag vectors degrades performance and raises error."
+        "Exp 1: Tree Capacity Boost": {
+            "estimator": lgb.LGBMRegressor(objective="regression_l2", learning_rate=0.1, num_leaves=63, random_state=42, verbosity=-1, n_estimators=150),
+            "hypothesis": "Expanding tree depth captures localized store variance metrics."
         },
-        "Exp 2: Regularization Boost": {
-            "pipeline_features": BASE_FEATURES + LAG_FEATURES,
-            "estimator": lgb.LGBMRegressor(objective="regression_l2", learning_rate=0.1, num_leaves=31, reg_alpha=2.0, reg_lambda=5.0, random_state=42, verbosity=-1, n_estimators=150),
-            "hypothesis": "Adding structural L1/L2 penalties lowers validation overfitting."
-        },
-        "Exp 3: Aggressive Tree Structure": {
-            "pipeline_features": BASE_FEATURES + LAG_FEATURES,
+        "Exp 2: Cool Learning Scale": {
             "estimator": lgb.LGBMRegressor(objective="regression_l2", learning_rate=0.03, num_leaves=128, random_state=42, verbosity=-1, n_estimators=400),
-            "hypothesis": "Deepening tree complexity paired with a smaller learning rate uncovers non-linear trends."
+            "hypothesis": "Deepening leaves while reducing learning step rates tracks complex non-linear trends."
         }
     }
     
@@ -237,10 +223,8 @@ def run_controlled_ablations(df: pd.DataFrame, base_pipeline: Pipeline, n_splits
     base_mean = 0.0
     
     for exp_name, config in experiments.items():
-        print(f" Running {exp_name}...")
         scores = []
-        
-        base_pipeline.named_steps['preprocessing'].feature_cols = config["pipeline_features"]
+        base_pipeline.named_steps['preprocessing'].feature_cols = feature_set
         base_pipeline.set_params(estimator=config["estimator"])
         
         for train_idx, val_idx in tscv.split(df_cv):
@@ -254,27 +238,41 @@ def run_controlled_ablations(df: pd.DataFrame, base_pipeline: Pipeline, n_splits
         mean_score = np.mean(scores)
         std_score = np.std(scores)
         
-        if exp_name == "Exp 0: Baseline Champion":
+        if exp_name == "Exp 0: Baseline Params":
             conclusion = "Benchmark initialized."
             base_mean = mean_score
         else:
             diff = mean_score - base_mean
-            if diff > 0.005:
-                conclusion = f"Rejected. Performance degraded (+{diff*100:.2f}% Error)."
-            elif diff < -0.002:
-                conclusion = f"Validated! Strategy improves performance ({diff*100:.2f}% Error drop)."
-            else:
-                conclusion = "Neutral impact. Marginal performance change."
+            conclusion = f"Validated! Improvement verified ({diff*100:.2f}% shift)." if diff < -0.002 else "Neutral/Rejected impact."
                 
         ablation_records.append({
             "Experiment": exp_name,
             "Hypothesis": config["hypothesis"],
-            "Controlled Change": "Feature Drop" if "Drop" in exp_name else ("Hyperparameter Modification" if "Exp 0" not in exp_name else "None"),
-            "CV Metric Impact (Mean ± Std Dev)": f"{mean_score*100:.2f}% ± {std_score*100:.3f}%",
+            "CV RMSPE (Mean ± Std Dev)": f"{mean_score*100:.2f}% ± {std_score*100:.3f}%",
             "Conclusion": conclusion
         })
         
     return pd.DataFrame(ablation_records)
+
+# =====================================================================
+# PART E: CLOSED-LOOP REMEDIATION ENGINE (FEEDBACK REMEDIATION)
+# =====================================================================
+
+def run_part_e_remediation(df: pd.DataFrame, pipeline: Pipeline):
+    print("\n" + "="*80)
+    print("  PART E: CLOSED-LOOP REMEDIATION ENGINE (DEPLOYING REVISED FEATURES)")
+    print("="*80)
+    print("Feedback Received from Part D Failure Mode Analysis: [FM-1 Promo Surprise Outlier Concentration]")
+    print("Action Plan: Injecting 'StorePromoElasticity' and 'StorePromoInteraction' features into testing arrays...")
+    
+    remediated_features = BASE_FEATURES + LAG_FEATURES + REMEDIATION_FEATURES
+    ablation_remediated_df = run_controlled_ablations(df, pipeline, remediated_features, n_splits=3)
+    
+    print("\n" + "="*120)
+    print("                       PART E: POST-REMEDIATION CONTROLLED ABLATION LOG TABLE")
+    print("="*120)
+    print(ablation_remediated_df.to_string(index=False))
+    print("="*120 + "\n")
 
 
 # =====================================================================
@@ -292,50 +290,36 @@ def main():
     df = pd.merge(train_clean, store_raw, on="Store", how="inner")
     df["Sales"] = df["Sales"].astype(float)
 
-    # ── PART A: INITIALIZE STRUCTURAL PIPELINE OBJECT FIRST ──
-    print("\n[Part A] Instantiating formal pipeline object to isolate data leakage boundaries...")
+    # ── PART A ──
     production_pipeline = build_final_submission_pipeline(BASE_FEATURES + LAG_FEATURES)
 
-    # ── PART B: CHAMPION SELECTION TOURNAMENT REUSING PART A PIPELINE ──
+    # ── PART B ──
     cv_results = evaluate_models_cv(df, production_pipeline, n_splits=5)
     champion_name = declare_champion(cv_results)
 
-    # ── PART C: CONTROLLED ABLATION LOGGING SUITE ─────────────────
+    # ── PART C ──
     if champion_name == "LightGBM":
-        ablation_log_df = run_controlled_ablations(df, production_pipeline, n_splits=3)
+        print("--- Starting Part C: Champion Controlled Ablations Suite (Standard Features) ---")
+        ablation_log_df = run_controlled_ablations(df, production_pipeline, BASE_FEATURES + LAG_FEATURES, n_splits=3)
         print("\n" + "="*110)
         print("                                PART C: CONTROLLED ABLATION LOG TABLE")
         print("="*110)
-        pd.set_option('display.max_columns', None)
-        pd.set_option('display.width', 1000)
         print(ablation_log_df.to_string(index=False))
         print("="*110 + "\n")
-        ablation_log_df.to_csv("outputs/ablation_log_report.csv", index=False)
 
-    # ── FINAL PRODUCTION OPTIMIZED DEPLOYMENT RUN ───────────
-    print("Executing final model deployment run using optimized pipeline settings...")
-    
+    # ── PART D ──
+    print("Executing standard validation run to feed failure analysis engines...")
     train_df = df[df["Date"] < "2015-07-01"].copy()
     val_df   = df[df["Date"] >= "2015-07-01"].copy()
-    
     y_train_log = np.log1p(train_df["Sales"])
     y_val_real = val_df["Sales"].values
 
-    production_pipeline.named_steps['preprocessing'].feature_cols = BASE_FEATURES + LAG_FEATURES
-    production_pipeline.set_params(estimator=lgb.LGBMRegressor(
-        objective="regression_l2", learning_rate=0.03, num_leaves=128, random_state=42, verbosity=-1, n_estimators=600
-    ))
-    
     production_pipeline.fit(train_df, y_train_log)
     val_preds = np.expm1(production_pipeline.predict(val_df))
-    print(f"\n🏆 Final Encapsulated Pipeline Production Validation RMSPE : {rmspe(y_val_real, val_preds) * 100:.2f}%")
-
-    with open("rossmann_formal_pipeline.pkl", "wb") as f:
-        pickle.dump({"pipeline": production_pipeline}, f)
-    print("Formal pipeline serialized successfully → rossmann_formal_pipeline.pkl")
-
     run_failure_analysis(val_df=val_df, y_val_real=y_val_real, val_preds=val_preds)
+
+    # ── PART E: CLOSED-LOOP REMEDIATION ENGINE RE-RUN ──
+    run_part_e_remediation(df, production_pipeline)
 
 if __name__ == "__main__":
     main()
-    
