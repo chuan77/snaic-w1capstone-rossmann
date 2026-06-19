@@ -1,0 +1,5 @@
+Experiment,Hypothesis,Controlled Change,CV Metric Impact (Mean ± Std Dev),Conclusion
+Exp 0: Baseline Champion,Base model performance with standard features.,None,21.29% ± 2.065%,Benchmark initialized.
+Exp 1: Drop Lag Features,Removing time-series lag vectors degrades performance and raises error.,Feature Drop,27.09% ± 0.568%,Rejected. Performance degraded (+5.79% Error).
+Exp 2: Regularization Boost,Adding structural L1/L2 penalties lowers validation overfitting.,Hyperparameter Modification,21.94% ± 2.205%,Rejected. Performance degraded (+0.65% Error).
+Exp 3: Aggressive Tree Structure,Deepening tree complexity paired with a smaller learning rate uncovers non-linear trends.,Hyperparameter Modification,21.02% ± 3.117%,Validated! Strategy improves performance (-0.27% Error drop).
