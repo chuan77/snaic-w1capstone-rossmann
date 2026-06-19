@@ -1,5 +1,14 @@
 # ICT6001 Week01 Group Capstone — Rossmann Store Sales
 
+## Team
+
+| Name | Role |
+|------|------|
+| Goh Hui Min | Data Architect & Engineer |
+| Wong Chuan Sern | AI Modeling Engineer |
+| Xu Hongming | Optimization & Tuning Engineer |
+| Ling Kheng Aik Jony | Risk & Business Strategist |
+
 ## 1. Project Objective
 
 To carry out data validation, baseline feasibility using default classical models with feature engineering / finetuning, transitioning to pipeline engineering, ablation studies and decision making.
