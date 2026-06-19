@@ -1,5 +1,0 @@
-Experiment,Hypothesis,Controlled Change,RMSPE (Mean ± Std Dev),MAE (Mean ± Std Dev),Conclusion
-Exp 0: Baseline Champion,Base model performance with standard feature set.,None,21.06% ± 2.577%,€833.49 ± €64.14,Benchmark initialized.
-Exp 1: Drop Lag Features,Removing lag vectors degrades variance and raises validation error.,Feature Drop,22.86% ± 1.226%,€1042.49 ± €63.33,Rejected. Performance degraded (+1.80% RMSPE).
-Exp 2: Regularization Boost,Adding structural L1/L2 penalties lowers validation overfitting spikes.,Hyperparameter Modification,20.87% ± 2.141%,€818.66 ± €46.86,Neutral impact. Marginal change verified.
-Exp 3: Aggressive Tree Structure,Deepening tree complexity paired with a smaller learning rate reveals non-linear trends.,Hyperparameter Modification,21.24% ± 3.462%,€793.44 ± €41.27,Neutral impact. Marginal change verified.
