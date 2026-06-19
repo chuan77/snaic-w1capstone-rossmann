@@ -33,6 +33,43 @@ The objective is not to brute-force a high accuracy score (e.g. by running thous
 
 **Kaggle Rossmann Store Sales** — Rossmann operates over 3,000 drug stores in 7 European countries. Store managers are tasked with predicting daily sales up to six weeks in advance. Sales are influenced by promotions, competition, school and state holidays, seasonality, and locality.
 
+## 3. Task Requirements
+
+The assignment is split into four parts.
+
+### Part A: Advanced Data Preparation & Pipeline Engineering
+
+- **Requirement:** Finalize CRISP-DM Phase 3. Implement robust handling for scaling, encoding, and missing values.
+- **Constraint:** All data transformations and the estimator must be strictly encapsulated within a formal pipeline object (e.g., `sklearn.pipeline.Pipeline`). This proves the prevention of data leakage during validation.
+
+### Part B: Champion Model Selection
+
+- **Requirement:** Compare 2 to 3 distinct algorithmic families (e.g., a Linear/Distance-based model versus a Tree-based ensemble). Model stacking approaches are also permitted.
+- **Deliverable:** Evaluate base models using k-fold cross-validation (e.g., 5-fold) or a time-series split. Declare one model as the "Champion" based on the mean and standard deviation of your primary evaluation metric.
+
+### Part C: Controlled Ablations & Tuning (The Champion)
+
+- **Requirement:** Perform a maximum of 4 controlled experiments exclusively on the chosen Champion model. This may involve adding a specific engineered feature, applying a class balancing technique, or tuning a specific set of hyperparameters.
+- **Deliverable:** An Ablation Log (Table) explicitly detailing: Hypothesis, Controlled Change, CV Metric Impact (Mean ± Std Dev), and Conclusion.
+
+### Part D: Mechanical Failure Analysis *(optional)*
+
+- **Requirement:** Aggregate metrics obscure underlying model flaws. Inspect the raw validation data where the model was confidently incorrect.
+  - **For Classification:** Extract 5–10 instances of False Positives or False Negatives with high prediction confidence. Mechanically explain why the model failed on these specific instances based on their feature values, and propose a targeted technical fix.
+  - **For Regression:** Extract the 5–10 instances from your validation set that exhibit the highest absolute error (extreme under/over-predictions). Analyze the feature values of these specific extreme outliers to explain the failure and propose a technical fix.
+
+### Part E: Decision Making
+
+- **Requirement:** A model's raw output must be translated into a business decision. Default thresholds (0.5) are rarely optimal in the real world. You must logically evaluate the risks of your model's errors based on the context defined in Stage 1.
+
+  **For Classification:**
+  - Identify which error is more damaging to the business: a False Positive or a False Negative.
+  - Logically argue whether your operating threshold should be shifted higher (more conservative) or lower (more aggressive) than the default 0.5. Justify the direction of the shift — an exact optimal threshold is not required.
+
+  **For Regression:**
+  - Identify which error carries a heavier operational penalty: over-predicting or under-predicting the target variable.
+  - Logically argue whether the business should apply a "safety margin" (e.g., systematically adding or subtracting a buffer to raw predictions) before acting on the model's output.
+
 ## 4. Project Structure
 
 ```
@@ -60,7 +97,7 @@ snaic-w1capstone-rossmann/
 │   ├── rossmann_rf_business.csv         # Random Forest predictions with business-policy labels
 │   └── rossmann_rf_predictions_full.csv # Full Random Forest prediction set (all rows)
 │
-├── rossmann_final.py                    # Chuan Sern own exploratory EDA notebook, model selection, ablation analysis, mechanical failure analysis, submission files
+├── rossmann_final.py                    # Chuan Sern own exploratory EDA python code, model selection, ablation analysis, mechanical failure analysis, submission files
 ├── part_d_failure_analysis.py           # Failure mode analysis: error bucketing and visualisations
 ├── rossmann_formal_pipeline.pkl         # Serialised best-model pipeline for inference
 ├── eda_JL_CPU.ipynb                     # Main training script: pipeline, ablations, model export data analysis notebook for the project
