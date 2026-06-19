@@ -1,177 +1,188 @@
-# ICT6001 Week01 Group Capstone — Rossmann Store Sales
+# Rossmann Sales Forecasting
 
-## Team
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-| Name | Role |
-|------|------|
-| Goh Hui Min | Data Architect & Engineer |
-| Wong Chuan Sern | AI Modeling Engineer |
-| Xu Hongming | Optimization & Tuning Engineer |
-| Ling Kheng Aik Jony | Risk & Business Strategist |
+> Predicting sales for Rossmann drugstores using machine learning models
 
-## 1. Project Objective
+## Table of Contents
+- [Overview](#overview)
+- [Project Structure](#project-structure)
+- [Data Description](#data-description)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Models](#models)
+- [Results](#results)
+- [Contributing](#contributing)
+- [License](#license)
 
-To carry out data validation, baseline feasibility using default classical models with feature engineering / finetuning, transitioning to pipeline engineering, ablation studies and decision making.
+## Overview
 
-The objective is not to brute-force a high accuracy score (e.g. by running thousands of hyperparameter tuning iterations) or chasing leaderboard rankings. The objective is to demonstrate data preparation via pipelines, logical model selection, controlled experimentation, and a mechanical understanding of model failures before translating probabilistic or continuous outputs into actionable business policies.
+This project aims to predict future sales for Rossmann drugstores based on historical sales data, store information, and external factors. The solution implements multiple machine learning models to achieve accurate forecasting.
 
-## 2. Scope and Hard Constraints
+### Key Features
+- Data preprocessing and feature engineering
+- Multiple ML models (LightGBM, Random Forest, XGBoost)
+- Comprehensive exploratory data analysis (EDA)
+- Model evaluation and comparison
+- Submission file generation for Kaggle competitions
 
-**Permitted:**
+## Project Structure
 
-- **Advanced Data Preparation:** Feature scaling, advanced encoding (e.g., target encoding), complex imputation, and data imbalance mitigation (e.g., SMOTE).
-- **Model Ensembling:** Classical ensemble methods (e.g., Random Forest, Gradient Boosting, Model Stacking).
-- **Hyperparameter Tuning:** Justify what you search and why. Roughly 3 parameters per model, with grid/random searches of 50 total iterations.
+```
+.
+├── data/                      # Data files
+│   ├── train.csv             # Training data
+│   ├── test.csv              # Test data for predictions
+│   ├── store.csv             # Store information
+│   └── mechanical_failure_analysis.csv
+├── outputs/                   # Generated outputs
+│   ├── Plots and visualizations
+│   ├── prediction submissions
+│   └── analysis reports
+├── submissions/               # Final submission files
+│   └── Multiple model predictions (LightGBM, Random Forest)
+├── .venv/                     # Python virtual environment
+├── .git/                      # Git repository
+├── .continue/                 # Continue IDE configuration
+├── .vscode/                   # VS Code configuration
+├── pyproject.toml            # Project dependencies and metadata
+├── README.md                 # Project documentation
+├── rossmann_final.py         # Main project script
+├── part_d_failure_analysis.py # Analysis script
+└── eda_JL_CPU.ipynb          # EDA notebook
+```
 
-**Strictly Prohibited:**
+## Data Description
 
-- **Deep Learning / LLMs:** Language models or deep learning models remain prohibited as the primary predictive component. They may be used for feature engineering but not for prediction.
-- **Massive Automated Search:** Unjustified computational brute-forcing (e.g., 100+ grid points).
-- **Test Set Overuse:** The hold-out test set may only be evaluated once to generate the final deployment metrics. All model selection and tuning must use cross-validation on the training set.
+### Training Data (`train.csv`)
+- **Date**: Sale date
+- **Store**: Store ID
+- **Sales**: Sales amount
+- **Customers**: Number of customers
+- **Open**: Store open status
+- **Promo**: Promo indicator
+- **StateHoliday**: State holiday code
+- **SchoolHoliday**: School holiday indicator
 
-## 3. Dataset
+### Test Data (`test.csv`)
+Same columns as training data except **Sales** (target variable to predict)
 
-**Kaggle Rossmann Store Sales** — Rossmann operates over 3,000 drug stores in 7 European countries. Store managers are tasked with predicting daily sales up to six weeks in advance. Sales are influenced by promotions, competition, school and state holidays, seasonality, and locality.
+### Store Data (`store.csv`)
+- **Store**: Store ID
+- **StoreType**: Store type
+- **Assortment**: Assortment level
+- **CompetitionDistance**: Distance to nearest competitor
+- **CompetitionOpenSince**: Year and month competitor opened
+- **Promo2**: Promo2 indicator
+- **Promo2Since**: Year and week promo2 started
 
-## 3. Task Requirements
-
-The assignment is split into four parts.
-
-### Part A: Advanced Data Preparation & Pipeline Engineering
-
-- **Requirement:** Finalize CRISP-DM Phase 3. Implement robust handling for scaling, encoding, and missing values.
-- **Constraint:** All data transformations and the estimator must be strictly encapsulated within a formal pipeline object (e.g., `sklearn.pipeline.Pipeline`). This proves the prevention of data leakage during validation.
-
-### Part B: Champion Model Selection
-
-- **Requirement:** Compare 2 to 3 distinct algorithmic families (e.g., a Linear/Distance-based model versus a Tree-based ensemble). Model stacking approaches are also permitted.
-- **Deliverable:** Evaluate base models using k-fold cross-validation (e.g., 5-fold) or a time-series split. Declare one model as the "Champion" based on the mean and standard deviation of your primary evaluation metric.
-
-### Part C: Controlled Ablations & Tuning (The Champion)
-
-- **Requirement:** Perform a maximum of 4 controlled experiments exclusively on the chosen Champion model. This may involve adding a specific engineered feature, applying a class balancing technique, or tuning a specific set of hyperparameters.
-- **Deliverable:** An Ablation Log (Table) explicitly detailing: Hypothesis, Controlled Change, CV Metric Impact (Mean ± Std Dev), and Conclusion.
-
-### Part D: Mechanical Failure Analysis *(optional)*
-
-- **Requirement:** Aggregate metrics obscure underlying model flaws. Inspect the raw validation data where the model was confidently incorrect.
-  - **For Classification:** Extract 5–10 instances of False Positives or False Negatives with high prediction confidence. Mechanically explain why the model failed on these specific instances based on their feature values, and propose a targeted technical fix.
-  - **For Regression:** Extract the 5–10 instances from your validation set that exhibit the highest absolute error (extreme under/over-predictions). Analyze the feature values of these specific extreme outliers to explain the failure and propose a technical fix.
-
-### Part E: Decision Making
-
-- **Requirement:** A model's raw output must be translated into a business decision. Default thresholds (0.5) are rarely optimal in the real world. You must logically evaluate the risks of your model's errors based on the context defined in Stage 1.
-
-  **For Classification:**
-  - Identify which error is more damaging to the business: a False Positive or a False Negative.
-  - Logically argue whether your operating threshold should be shifted higher (more conservative) or lower (more aggressive) than the default 0.5. Justify the direction of the shift — an exact optimal threshold is not required.
-
-  **For Regression:**
-  - Identify which error carries a heavier operational penalty: over-predicting or under-predicting the target variable.
-  - Logically argue whether the business should apply a "safety margin" (e.g., systematically adding or subtracting a buffer to raw predictions) before acting on the model's output.
-
-## 4. Setup & Usage
+## Installation
 
 ### Prerequisites
+- Python 3.10 or higher
+- pip or uv package manager
 
-- **Python 3.11.5+**
-- **[uv](https://docs.astral.sh/uv/)** — fast Python package manager (replaces pip/venv)
-  ```bash
-  # Install uv (macOS / Linux)
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  ```
-- **Jupyter** (for the notebook) — installed automatically via `uv sync` below
+### Setup Steps
 
-### Clone the repository
+1. Clone the repository
+   ```bash
+   git clone <repository-url>
+   cd rossmann-sales-forecasting
+   ```
 
+2. Create a virtual environment (optional but recommended)
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+3. Install dependencies
+   ```bash
+   pip install -e .
+   # or using uv
+   uv sync
+   ```
+
+## Usage
+
+### Running the Main Project Script
+
+Execute the main forecasting pipeline:
 ```bash
-git clone https://github.com/chuan77/snaic-w1capstone-rossmann.git
-cd snaic-w1capstone-rossmann
+python rossmann_final.py
 ```
 
-If you already have the repo, pull the latest changes:
+### Running the Analysis Script
 
+Execute the failure analysis:
 ```bash
-git pull origin main
+python part_d_failure_analysis.py
 ```
 
-### Install dependencies
+### Running the EDA Notebook
 
+Open the exploratory data analysis notebook:
 ```bash
-uv sync
+jupyter notebook eda_JL_CPU.ipynb
 ```
 
-This creates a `.venv` virtual environment and installs all locked dependencies (`lightgbm`, `scikit-learn`, `pandas`, `numpy`, `matplotlib`).
+### Generating Predictions
 
-### Download the dataset
+The main script automatically:
+1. Loads and preprocesses data
+2. Trains models
+3. Evaluates performance
+4. Generates submission files in the `submissions/` directory
 
-The `data/` folder is not tracked by git. Download the Kaggle Rossmann Store Sales dataset and place the files here:
+## Models
 
-```
-data/
-├── train.csv
-├── test.csv
-└── store.csv
-```
+### LightGBM
+- Fast and efficient gradient boosting framework
+- Handles categorical features well
+- Often produces excellent results with minimal tuning
 
-### Run the training script
+### Random Forest
+- Ensemble method using multiple decision trees
+- Robust to overfitting
+- Provides feature importance analysis
 
-```bash
-uv run python rossmann_final.py
-```
+## Results
 
-Outputs (plots, ablation log, submission CSV, serialised pipeline) are written to `outputs/` and `submissions/`.
+### Evaluation Metrics
+- **RMSE** (Root Mean Square Error)
 
-### Run the failure analysis script
+### Submission Files
+Multiple submission files are generated for different model configurations:
+- `rossmann_lgbm_business.csv`
+- `rossmann_lgbm_kaggle.csv`
+- `rossmann_lgbm_predictions_full.csv`
+- `rossmann_rf_business.csv`
+- `rossmann_rf_kaggle.csv`
+- `rossmann_rf_predictions_full.csv`
 
-```bash
-uv run python part_d_failure_analysis.py
-```
+### Visualization Outputs
+The project generates various plots:
+- Feature importance charts
+- Error distribution analysis
+- Actual vs. predicted sales scatter plots
+- Failure modes visualization
 
-Requires `rossmann_formal_pipeline.pkl` to exist (generated by `rossmann_final.py`).
+## Contributing
 
-### Open the EDA notebook
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-```bash
-uv run jupyter notebook eda_JL_CPU.ipynb
-```
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-Or open it directly in VS Code — the `.venv` kernel will be detected automatically.
+## License
 
-## 5. Project Structure
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-```
-snaic-w1capstone-rossmann/
-├── data/
-│   ├── train.csv                        # Historical daily sales used for training
-│   ├── test.csv                         # Hold-out set for final evaluation / Kaggle submission
-│   ├── store.csv                        # Store-level metadata (type, assortment, competition)
-│   └── mechanical_failure_analysis.csv  # Derived dataset capturing model failure cases
-│
-├── outputs/
-│   ├── ablation_log_report.csv          # Structured results from each ablation experiment
-│   ├── actual_vs_predicted.png          # Diagnostic plot comparing predictions to ground truth
-│   ├── feature_importance.png           # Bar chart of top model features
-│   ├── plot_d1_error_distribution.png   # Residual / error distribution histogram
-│   ├── plot_d2_scatter_outliers.png     # Scatter plot highlighting outlier predictions
-│   ├── plot_d3_failure_modes.png        # Categorised failure mode breakdown
-│   └── submission.csv                   # Final Kaggle-formatted submission file
-│
-├── submissions/
-│   ├── rossmann_lgbm_kaggle.csv         # LightGBM predictions formatted for Kaggle
-│   ├── rossmann_lgbm_business.csv       # LightGBM predictions with business-policy labels
-│   ├── rossmann_lgbm_predictions_full.csv  # Full LightGBM prediction set (all rows)
-│   ├── rossmann_rf_kaggle.csv           # Random Forest predictions formatted for Kaggle
-│   ├── rossmann_rf_business.csv         # Random Forest predictions with business-policy labels
-│   └── rossmann_rf_predictions_full.csv # Full Random Forest prediction set (all rows)
-│
-├── rossmann_final.py                    # Chuan Sern own exploratory EDA python code, model selection, ablation analysis, mechanical failure analysis, submission files
-├── part_d_failure_analysis.py           # Failure mode analysis: error bucketing and visualisations
-├── rossmann_formal_pipeline.pkl         # Serialised best-model pipeline for inference
-├── eda_JL_CPU.ipynb                     # Main training script: pipeline, ablations, model export data analysis notebook for the project
-├── main.py                              # Project entry point (placeholder)
-├── pyproject.toml                       # Project metadata and dependencies (managed via uv)
-├── uv.lock                              # Locked dependency versions for reproducibility
-├── .python-version                      # Pinned Python version for the project
-└── .vscode/settings.json                # VSCode workspace settings
-```
+## Acknowledgments
+
+- Rossmann for providing the dataset
+- ML community for inspiration and resources

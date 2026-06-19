@@ -1,14 +1,22 @@
 [project]
-name = "snaic-w1capstone-rossmann"
+name = "rossmann-sales-forecasting"
 version = "0.1.0"
-description = "Add your description here"
+description = "Predicting sales for Rossmann drugstores"
 readme = "README.md"
-requires-python = ">=3.11.5"
+requires-python = ">=3.10"
 dependencies = [
-    "lightgbm>=4.6.0",
-    "matplotlib>=3.11.0",
-    "numpy>=2.4.6",
-    "pandas>=3.0.3",
-    "pathlib>=1.0.1",
-    "scikit-learn>=1.9.0",
+    "pandas>=2.0.0",
+    "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "jupyter>=1.0.0",
+    "numpy>=1.24.0",
 ]
+
+[project.scripts]
+rossmann-forecast = "rossmann_final:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
